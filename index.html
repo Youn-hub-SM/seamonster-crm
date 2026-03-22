@@ -1,0 +1,737 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>씨몬스터 CRM 메시지 맵</title>
+<style>
+  :root {
+    --navy: #0B1D3A;
+    --navy-mid: #1A2E4A;
+    --canvas-bg: #E8E6E1;
+    --canvas-dot: #D5D3CC;
+    --white: #FFFFFF;
+    --gray-50: #FAFAF8;
+    --gray-100: #F1EFE8;
+    --gray-200: #E2E0D8;
+    --gray-300: #D3D1C7;
+    --gray-400: #B4B2A9;
+    --gray-500: #888780;
+    --gray-600: #5F5E5A;
+    --gray-700: #444441;
+    --gray-900: #1A1A18;
+    --orange: #F28C28;
+    --orange-light: #FFF3E6;
+    --orange-dark: #C46D10;
+    --green: #1D9E75;
+    --green-bg: #E8F5EE;
+    --green-dark: #0F6E56;
+    --red: #D85A30;
+    --red-bg: #FAECE7;
+    --red-dark: #993C1D;
+    --blue: #378ADD;
+    --blue-bg: #E6F1FB;
+    --blue-dark: #185FA5;
+    --purple-bg: #EEEDFE;
+    --purple-dark: #534AB7;
+    --teal: #0F6E56;
+    --teal-bg: #E1F5EE;
+    --font: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; font-family: var(--font); background: var(--canvas-bg); color: var(--gray-900); -webkit-font-smoothing: antialiased; }
+  #canvas-viewport {
+    width: 100%; height: 100%; overflow: hidden; cursor: grab; position: relative;
+    background-image: radial-gradient(circle, var(--canvas-dot) 1px, transparent 1px);
+    background-size: 24px 24px;
+  }
+  #canvas-viewport.grabbing { cursor: grabbing; }
+  #canvas {
+    position: absolute; top: 0; left: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+  .toolbar {
+    position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%);
+    background: var(--navy); border-radius: 12px; padding: 8px 12px;
+    display: flex; align-items: center; gap: 8px; z-index: 100;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.25);
+  }
+  .toolbar button {
+    width: 36px; height: 36px; border: none; border-radius: 8px;
+    background: rgba(255,255,255,0.1); color: #fff; font-size: 18px;
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    font-family: var(--font); transition: background 0.15s;
+  }
+  .toolbar button:hover { background: rgba(255,255,255,0.2); }
+  .toolbar .zoom-display {
+    font-size: 12px; color: rgba(255,255,255,0.6); min-width: 44px;
+    text-align: center; font-weight: 600;
+  }
+  .toolbar .sep { width: 1px; height: 24px; background: rgba(255,255,255,0.15); }
+  .toolbar .brand { font-size: 12px; color: rgba(255,255,255,0.4); font-weight: 600; letter-spacing: -0.3px; margin-left: 4px; }
+  .toolbar .brand span { color: var(--orange); }
+  .top-bar {
+    position: fixed; top: 0; left: 0; right: 0; height: 48px; z-index: 100;
+    background: var(--navy); display: flex; align-items: center; padding: 0 20px;
+    box-shadow: 0 2px 12px rgba(0,0,0,0.15);
+  }
+  .top-bar-brand { font-size: 14px; font-weight: 700; color: #fff; letter-spacing: -0.3px; }
+  .top-bar-brand span { color: var(--orange); }
+  .top-bar-title { font-size: 14px; color: rgba(255,255,255,0.7); margin-left: 16px; font-weight: 500; }
+  .top-bar-right { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .top-filter {
+    font-size: 11px; padding: 5px 12px; border-radius: 100px;
+    border: 1px solid rgba(255,255,255,0.15); background: transparent;
+    color: rgba(255,255,255,0.5); cursor: pointer; font-family: var(--font); font-weight: 500;
+  }
+  .top-filter:hover { border-color: rgba(255,255,255,0.3); color: rgba(255,255,255,0.7); }
+  .top-filter.on { background: var(--orange); color: #fff; border-color: var(--orange); }
+  .top-bar-search {
+    padding: 5px 12px; border: 1px solid rgba(255,255,255,0.15); border-radius: 100px;
+    font-size: 11px; font-family: var(--font); width: 140px; background: rgba(255,255,255,0.06);
+    color: #fff;
+  }
+  .top-bar-search:focus { outline: none; border-color: var(--orange); }
+  .top-bar-search::placeholder { color: rgba(255,255,255,0.3); }
+  .minimap {
+    position: fixed; bottom: 72px; right: 20px; width: 200px; height: 120px;
+    background: var(--white); border-radius: 10px; box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+    z-index: 100; overflow: hidden; border: 1px solid var(--gray-200);
+  }
+  .minimap canvas { width: 100%; height: 100%; display: block; }
+  .minimap-viewport {
+    position: absolute; border: 2px solid var(--orange); border-radius: 2px;
+    pointer-events: none;
+  }
+  .minimap-label { position: absolute; top: 4px; left: 8px; font-size: 9px; color: var(--gray-400); font-weight: 600; letter-spacing: 0.5px; }
+  .stage-col { position: absolute; top: 0; display: flex; flex-direction: column; }
+  .stage-header-card {
+    width: 300px; padding: 16px 20px; background: var(--navy); color: #fff;
+    border-radius: 12px; margin-bottom: 12px;
+    box-shadow: 0 4px 16px rgba(11,29,58,0.3);
+  }
+  .stage-header-card .sh-num { font-size: 11px; color: var(--orange); font-weight: 700; margin-bottom: 2px; letter-spacing: 0.5px; }
+  .stage-header-card .sh-name { font-size: 17px; font-weight: 700; letter-spacing: -0.3px; }
+  .stage-header-card .sh-sub { font-size: 11px; color: rgba(255,255,255,0.5); margin-top: 2px; }
+  .stage-header-card .sh-counts { display: flex; gap: 10px; margin-top: 8px; }
+  .stage-header-card .sh-count { font-size: 11px; font-weight: 600; }
+  .sh-count.green { color: #5DCAA5; }
+  .sh-count.red { color: #F09595; }
+  .sh-count.blue { color: #85B7EB; }
+  .msg-node {
+    width: 300px; background: var(--white); border-radius: 10px;
+    margin-bottom: 10px; overflow: hidden;
+    border: 1px solid var(--gray-200);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    transition: box-shadow 0.2s, border-color 0.2s;
+  }
+  .msg-node:hover { box-shadow: 0 4px 20px rgba(0,0,0,0.12); border-color: var(--gray-300); }
+  .msg-node.active-node { border-left: 4px solid var(--green); }
+  .msg-node.gap-node { border-left: 4px solid var(--red); }
+  .msg-node.auto-node { border-left: 4px solid var(--blue); }
+  .msg-node.collapsed .node-detail,
+  .msg-node.collapsed .node-perf,
+  .msg-node.collapsed .node-msg,
+  .msg-node.collapsed .node-img,
+  .msg-node.collapsed .node-links { display: none; }
+  .msg-node.collapsed .node-header { padding: 8px 14px; }
+  .msg-node.collapsed { cursor: pointer; }
+  .node-toggle { display: inline-block; font-size: 9px; color: var(--gray-400); margin-left: 4px; transition: transform 0.2s; }
+  .msg-node.collapsed .node-toggle { transform: rotate(-90deg); }
+  .node-header { padding: 12px 14px; }
+  .node-top { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  .node-title { font-size: 13px; font-weight: 600; letter-spacing: -0.2px; }
+  .tag { font-size: 9px; padding: 2px 7px; border-radius: 100px; font-weight: 600; white-space: nowrap; }
+  .tag-kakao { background: #FFF8E1; color: #8D6E00; }
+  .tag-leaflet { background: var(--green-bg); color: var(--green-dark); }
+  .tag-cafe24 { background: var(--blue-bg); color: var(--blue-dark); }
+  .tag-manual { background: var(--gray-100); color: var(--gray-600); }
+  .tag-s-active { background: var(--green-bg); color: var(--green-dark); }
+  .tag-s-gap { background: var(--red-bg); color: var(--red-dark); }
+  .tag-s-auto { background: var(--blue-bg); color: var(--blue-dark); }
+  .node-timing { font-size: 10px; color: var(--gray-400); margin-left: auto; font-weight: 500; }
+  .node-detail { font-size: 11px; color: var(--gray-500); margin-top: 6px; line-height: 1.5; }
+  .node-perf { display: flex; gap: 2px; padding: 0 14px 10px; flex-wrap: wrap; }
+  .np-item { flex: 1; min-width: 60px; padding: 6px 8px; background: var(--gray-50); border-radius: 6px; text-align: center; }
+  .np-label { font-size: 9px; color: var(--gray-400); font-weight: 500; }
+  .np-val { font-size: 13px; font-weight: 700; color: var(--navy); margin-top: 1px; }
+  .node-msg {
+    border-top: 1px solid var(--gray-100); padding: 10px 14px;
+    background: var(--gray-50);
+  }
+  .node-msg-label { font-size: 9px; font-weight: 600; color: var(--gray-400); margin-bottom: 6px; letter-spacing: 0.5px; }
+  .node-msg-text { font-size: 11px; line-height: 1.7; white-space: pre-line; color: var(--gray-700); max-height: 200px; overflow-y: auto; }
+  .node-img { border-top: 1px solid var(--gray-100); padding: 10px 14px; }
+  .node-img img { width: 100%; border-radius: 6px; border: 1px solid var(--gray-200); display: block; }
+  .node-img-ph {
+    width: 100%; aspect-ratio: 2; border-radius: 6px; border: 1px dashed var(--gray-300);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--gray-400); font-size: 11px; background: var(--gray-100);
+  }
+  .node-links {
+    border-top: 1px solid var(--gray-100); padding: 8px 14px;
+    display: flex; gap: 6px; flex-wrap: wrap;
+  }
+  .node-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 10px; font-weight: 600; padding: 5px 10px;
+    border-radius: 6px; text-decoration: none;
+    transition: opacity 0.15s;
+    cursor: pointer;
+  }
+  .node-link:hover { opacity: 0.8; }
+  .node-link-icon { font-size: 12px; }
+  .link-solapi { background: #E8F5E9; color: #2E7D32; }
+  .link-cafe24 { background: var(--blue-bg); color: var(--blue-dark); }
+  .link-meta { background: #E3F2FD; color: #1565C0; }
+  .link-sheets { background: #E8F5E9; color: #1B5E20; }
+  .link-channel { background: #FFF8E1; color: #8D6E00; }
+  .link-blog { background: var(--orange-light); color: var(--orange-dark); }
+  .link-default { background: var(--gray-100); color: var(--gray-600); }
+  .connector {
+    position: absolute; pointer-events: none; z-index: -1;
+  }
+  .help-hint {
+    position: fixed; top: 60px; right: 20px; font-size: 11px; color: var(--gray-400);
+    background: var(--white); padding: 8px 14px; border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08); z-index: 90; line-height: 1.5;
+    border: 1px solid var(--gray-200);
+  }
+  .help-hint kbd { background: var(--gray-100); padding: 1px 5px; border-radius: 3px; font-size: 10px; font-family: var(--font); border: 1px solid var(--gray-200); }
+</style>
+</head>
+<body>
+<div class="top-bar">
+  <div class="top-bar-brand"><span>SEA</span>MONSTER</div>
+  <div class="top-bar-title">CRM 메시지 맵</div>
+  <div class="top-bar-right">
+    <button class="top-filter on" data-f="all" onclick="setFilter('all')">전체</button>
+    <button class="top-filter" data-f="active" onclick="setFilter('active')">운영 중</button>
+    <button class="top-filter" data-f="auto" onclick="setFilter('auto')">자동</button>
+    <button class="top-filter" data-f="gap" onclick="setFilter('gap')">빈 구간</button>
+    <input type="text" class="top-bar-search" placeholder="검색..." oninput="setSearch(this.value)" />
+  </div>
+</div>
+<div class="help-hint" id="helpHint">
+  <kbd>스크롤</kbd> 확대/축소 &nbsp; <kbd>드래그</kbd> 이동 &nbsp; <kbd>더블클릭</kbd> 확대 &nbsp; <kbd>카드 클릭</kbd> 접기/펼치기
+</div>
+<div id="canvas-viewport">
+  <div id="canvas"></div>
+</div>
+<div class="minimap">
+  <canvas id="minimapCanvas"></canvas>
+  <div class="minimap-viewport" id="minimapVP"></div>
+  <div class="minimap-label">OVERVIEW</div>
+</div>
+<div class="toolbar">
+  <div class="brand"><span>SEA</span>MONSTER</div>
+  <div class="sep"></div>
+  <button onclick="zoomTo(scale-0.15)" title="축소">-</button>
+  <div class="zoom-display" id="zoomDisplay">100%</div>
+  <button onclick="zoomTo(scale+0.15)" title="확대">+</button>
+  <div class="sep"></div>
+  <button onclick="fitAll()" title="전체 보기" style="font-size:13px;">FIT</button>
+  <button onclick="zoomTo(1)" title="100%" style="font-size:11px;">1:1</button>
+  <div class="sep"></div>
+  <button onclick="toggleAll()" id="toggleBtn" title="전체 펼치기/접기" style="font-size:11px;width:auto;padding:0 12px;">접기</button>
+</div>
+<script>
+// ── 링크 타입 설정 ──
+var LINK_TYPES = {
+  solapi:  { label: "솔라피",       icon: "📨", cls: "link-solapi" },
+  cafe24:  { label: "카페24 관리자", icon: "🛒", cls: "link-cafe24" },
+  meta:    { label: "메타 광고",     icon: "📢", cls: "link-meta" },
+  sheets:  { label: "Google Sheets", icon: "📊", cls: "link-sheets" },
+  channel: { label: "카카오채널",    icon: "💬", cls: "link-channel" },
+  blog:    { label: "블로그",        icon: "📝", cls: "link-blog" }
+};
+
+// ══════════════════════════════════════════════════════════
+// Google Sheets 연동 설정
+// ──────────────────────────────────────────────────────────
+// 1. Google Sheets에서 XLSX 템플릿을 업로드하거나 사본을 만듭니다
+// 2. 파일 > 공유 > 웹에 게시 > "메시지 맵" 시트 > CSV 형식 > 게시
+// 3. 아래 SHEET_CSV_URL에 생성된 URL을 붙여넣습니다
+// 4. 시트를 수정하면 HTML 맵이 자동으로 반영됩니다 (새로고침 시)
+// ══════════════════════════════════════════════════════════
+var SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vQhfjsth5p4DlO5ID9aJtkTWjoqtkHhwuNZhzjFWornrRbOcZXhQgB5fefUwAAzsQ/pub?gid=1827533123&single=true&output=csv"; // ← 여기에 Google Sheets 웹 게시 CSV URL 붙여넣기
+
+var DATA = [];
+
+// CSV 파싱 (줄바꿈/쉼표/따옴표 처리)
+function parseCSV(text) {
+  var rows = [], row = [], field = "", inQuote = false;
+  for (var i = 0; i < text.length; i++) {
+    var c = text[i], next = text[i+1];
+    if (inQuote) {
+      if (c === '"' && next === '"') { field += '"'; i++; }
+      else if (c === '"') { inQuote = false; }
+      else { field += c; }
+    } else {
+      if (c === '"') { inQuote = true; }
+      else if (c === ',') { row.push(field); field = ""; }
+      else if (c === '\r' && next === '\n') { row.push(field); field = ""; rows.push(row); row = []; i++; }
+      else if (c === '\n') { row.push(field); field = ""; rows.push(row); row = []; }
+      else { field += c; }
+    }
+  }
+  if (field || row.length) { row.push(field); rows.push(row); }
+  return rows;
+}
+
+// CSV 행들을 DATA 구조로 변환
+function csvToData(rows) {
+  if (rows.length < 2) return [];
+  var header = rows[0].map(function(h){ return h.trim().toLowerCase(); });
+  var ci = {};
+  header.forEach(function(h, i){ ci[h] = i; });
+
+  // 한글 헤더 매핑
+  var colMap = {
+    '스테이지': 'stage', '부제': 'sub', '메시지명': 'title',
+    '상태': 'status', '채널': 'channel', '발송시점': 'timing',
+    '상세설명': 'detail', '메시지 내용/초안': 'msg', '이미지url': 'img_url',
+    '솔라피 url': 'link_solapi', '카페24 url': 'link_cafe24',
+    '메타광고 url': 'link_meta', 'sheets url': 'link_sheets',
+    '카카오채널 url': 'link_channel', '블로그 url': 'link_blog',
+    '발송수': 'perf_sent', '도달': 'perf_reached', '열람': 'perf_opened',
+    '클릭': 'perf_clicked', '전환': 'perf_converted', '매출': 'perf_revenue'
+  };
+  header.forEach(function(h, i){
+    if (colMap[h]) ci[colMap[h]] = i;
+    else ci[h] = i;
+  });
+
+  function g(row, key) { return ci[key] !== undefined && row[ci[key]] !== undefined ? row[ci[key]].trim() : ""; }
+  function gn(row, key) { var v = g(row, key); return v ? parseInt(v, 10) : null; }
+
+  var stages = {};
+  var stageOrder = [];
+
+  for (var r = 1; r < rows.length; r++) {
+    var row = rows[r];
+    if (!row || row.length < 3) continue;
+    var stage = g(row, "stage");
+    var sub = g(row, "sub");
+    if (!stage) continue;
+
+    if (!stages[stage]) {
+      stages[stage] = { stage: stage, sub: sub, msgs: [] };
+      stageOrder.push(stage);
+    }
+
+    var links = [];
+    ["solapi","cafe24","meta","sheets","channel","blog"].forEach(function(lt) {
+      var url = g(row, "link_" + lt);
+      if (url || ci["link_" + lt] !== undefined) {
+        links.push({ type: lt, url: url });
+      }
+    });
+
+    var sent = gn(row, "perf_sent");
+    var perf = null;
+    if (sent) {
+      perf = {
+        sent: sent,
+        reached: gn(row, "perf_reached"),
+        opened: gn(row, "perf_opened"),
+        clicked: gn(row, "perf_clicked"),
+        converted: gn(row, "perf_converted"),
+        revenue: gn(row, "perf_revenue")
+      };
+    }
+
+    stages[stage].msgs.push({
+      title: g(row, "title"),
+      status: g(row, "status") || "gap",
+      ch: g(row, "channel") || "manual",
+      timing: g(row, "timing"),
+      detail: g(row, "detail"),
+      msg: g(row, "msg"),
+      img: g(row, "img_url"),
+      perf: perf,
+      links: links
+    });
+  }
+
+  return stageOrder.map(function(s){ return stages[s]; });
+}
+
+// Sheets에서 데이터 로드 (실패 시 폴백 데이터 사용)
+function loadData(callback) {
+  if (!SHEET_CSV_URL) {
+    console.log("SHEET_CSV_URL이 비어있습니다. 기본 데이터를 사용합니다.");
+    DATA = getFallbackData();
+    callback();
+    return;
+  }
+  var url = SHEET_CSV_URL;
+  // 캐시 방지
+  url += (url.indexOf("?") > -1 ? "&" : "?") + "_t=" + Date.now();
+
+  fetch(url)
+    .then(function(res) {
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      return res.text();
+    })
+    .then(function(csv) {
+      var rows = parseCSV(csv);
+      var parsed = csvToData(rows);
+      if (parsed.length > 0) {
+        DATA = parsed;
+        console.log("Google Sheets에서 " + DATA.length + "개 스테이지 로드 완료");
+      } else {
+        console.warn("시트 데이터가 비어있습니다. 기본 데이터를 사용합니다.");
+        DATA = getFallbackData();
+      }
+      callback();
+    })
+    .catch(function(err) {
+      console.error("Sheets 로드 실패:", err, "— 기본 데이터를 사용합니다.");
+      DATA = getFallbackData();
+      callback();
+    });
+}
+
+// 폴백 데이터 (Sheets 미연결 시 사용)
+function getFallbackData() {
+  return [
+  { stage: "유입/인지", sub: "첫 접점", msgs: [
+    { title: "체험단 안내 링크", status: "active", ch: "kakao", timing: "선정 시", detail: "구글폼/스모어 > 신규 필터링 후 발송. Apps Script 자동화 완료.", msg: "", img: "", perf: null, links: [{ type: "sheets", url: "" }, { type: "solapi", url: "" }] },
+    { title: "SNS 광고 > 랜딩", status: "active", ch: "manual", timing: "상시", detail: "메타 광고 > 정기배송 랜딩 또는 상품페이지.", msg: "", img: "", perf: null, links: [{ type: "meta", url: "" }] },
+    { title: "블로그/가이드 SEO", status: "active", ch: "manual", timing: "상시", detail: "blog.seamonster.kr 자연 유입. SEO 교육 진행 중.", msg: "", img: "", perf: null, links: [{ type: "blog", url: "" }] },
+    { title: "첫 방문 웰컴 쿠폰", status: "gap", ch: "cafe24", timing: "첫 방문 즉시", detail: "미운영. 첫 방문 이탈률 감소 + 전환율 개선 기대.", msg: "[씨몬스터] 첫 방문 감사합니다\n\n지금 가입하면 첫 주문 1,000원 할인 쿠폰을 드립니다.\n3만원 이상 주문 시 배송비도 무료입니다.\n\n> 쿠폰 받기", img: "", perf: null, links: [{ type: "cafe24", url: "" }] }
+  ]},
+  { stage: "첫 구매", sub: "전환 직후", msgs: [
+    { title: "주문 완료 알림", status: "auto", ch: "cafe24", timing: "결제 즉시", detail: "카페24 기본 자동 발송.", msg: "", img: "", perf: null, links: [{ type: "cafe24", url: "" }] },
+    { title: "입금 확인 알림", status: "auto", ch: "cafe24", timing: "입금 시", detail: "무통장 한정 자동 발송.", msg: "", img: "", perf: null, links: [{ type: "cafe24", url: "" }] },
+    { title: "첫 구매 환영 메시지", status: "gap", ch: "kakao", timing: "결제 후 1시간", detail: "미운영. 브랜드 첫인상 + 조리 안내.", msg: "[씨몬스터] 주문 감사합니다\n\n{고객명}님, 첫 주문이시네요.", img: "placeholder", perf: null, links: [{ type: "solapi", url: "" }, { type: "channel", url: "" }] },
+    { title: "카카오채널 추가 유도", status: "gap", ch: "kakao", timing: "결제 후 1일", detail: "미운영. 미확보 시 이후 알림톡 발송 불가.", msg: "[씨몬스터] 다음 주문이 더 편해집니다\n\n카카오채널 추가 시\n- 배송 알림 카카오톡 수신\n- 500원 할인쿠폰 즉시 지급\n\n> 채널 추가하기", img: "", perf: null, links: [{ type: "channel", url: "" }] }
+  ]},
+  { stage: "배송/수령", sub: "상품 경험 시작", msgs: [
+    { title: "발송 알림", status: "auto", ch: "cafe24", timing: "출고 시", detail: "카페24 자동 발송. 운송장번호 포함.", msg: "", img: "", perf: null, links: [{ type: "cafe24", url: "" }] },
+    { title: "배송 완료 알림", status: "auto", ch: "cafe24", timing: "배송 완료", detail: "카페24 자동 발송.", msg: "", img: "", perf: null, links: [{ type: "cafe24", url: "" }] },
+    { title: "리플렛 동봉", status: "active", ch: "leaflet", timing: "상품과 함께", detail: "322건 설문: 진입장벽 48건, 기대정보 부재 31건.", msg: "", img: "", perf: null, links: [] },
+    { title: "해동/조리법 안내", status: "gap", ch: "kakao", timing: "배송 완료 당일", detail: "미운영. 리플렛 미열람의 디지털 보완.", msg: "[씨몬스터] {고객명}님, 상품이 도착했습니다", img: "placeholder", perf: null, links: [{ type: "solapi", url: "" }] }
+  ]},
+  { stage: "섭취/경험", sub: "수령 후 1~7일", msgs: [
+    { title: "식단일기 이벤트", status: "active", ch: "manual", timing: "주문 건당 1회", detail: "전원 1,000원, 위클리 식단러 5,000원.", msg: "", img: "", perf: null, links: [{ type: "channel", url: "" }] },
+    { title: "리뷰 작성 요청", status: "gap", ch: "kakao", timing: "배송 후 5~7일", detail: "미운영. 별도 리뷰 유도 없음.", msg: "", img: "", perf: null, links: [{ type: "solapi", url: "" }, { type: "cafe24", url: "" }] },
+    { title: "만족도 확인 (NPS)", status: "gap", ch: "kakao", timing: "배송 후 7일", detail: "미운영. 이탈 사전 감지.", msg: "", img: "", perf: null, links: [{ type: "solapi", url: "" }] }
+  ]},
+  { stage: "재구매 유도", sub: "구매 후 2~4주", msgs: [
+    { title: "재구매 리마인더", status: "gap", ch: "kakao", timing: "재구매 주기 도래", detail: "미운영. 데이터 있으나 메시지 미연결.", msg: "", img: "placeholder", perf: null, links: [{ type: "solapi", url: "" }, { type: "sheets", url: "" }] },
+    { title: "크로스셀 추천", status: "gap", ch: "kakao", timing: "첫 구매 후 2주", detail: "미운영. 구매 이력 기반 추천.", msg: "", img: "", perf: null, links: [{ type: "solapi", url: "" }] },
+    { title: "정기배송 전환 제안", status: "gap", ch: "kakao", timing: "2회 구매 시점", detail: "미운영. 랜딩페이지만 존재.", msg: "", img: "placeholder", perf: null, links: [{ type: "solapi", url: "" }] }
+  ]},
+  { stage: "정기배송", sub: "구독 고객", msgs: [
+    { title: "정기배송 알림톡", status: "active", ch: "kakao", timing: "마감 3일 전", detail: "운영 중. 솔라피, Sheets URL 자동 생성.", msg: "", img: "", perf: { sent:58, reached:55, opened:47, clicked:31, converted:22, revenue:748000 }, links: [{ type: "solapi", url: "" }, { type: "sheets", url: "" }] },
+    { title: "결제 완료 안내", status: "active", ch: "kakao", timing: "결제 후", detail: "수동 결제 후 완료 안내.", msg: "", img: "", perf: null, links: [{ type: "solapi", url: "" }] },
+    { title: "회차 혜택 알림", status: "gap", ch: "kakao", timing: "회차 전환", detail: "미운영. 할인 누적 체감 강화.", msg: "", img: "", perf: null, links: [{ type: "solapi", url: "" }] },
+    { title: "해지 방지", status: "gap", ch: "kakao", timing: "해지 요청 시", detail: "미운영. 건너뛰기/주기 변경 대안.", msg: "", img: "", perf: null, links: [{ type: "cafe24", url: "" }] }
+  ]},
+  { stage: "이탈 방지", sub: "구매 중단 감지", msgs: [
+    { title: "장바구니 리타겟팅", status: "active", ch: "manual", timing: "이탈 후", detail: "CRM 캠페인 운영 중.", msg: "", img: "", perf: null, links: [{ type: "meta", url: "" }] },
+    { title: "60일 이탈자", status: "active", ch: "kakao", timing: "60일 경과", detail: "운영 중. 전환율 추적.", msg: "", img: "", perf: { sent:245, reached:230, opened:142, clicked:38, converted:12, revenue:456000 }, links: [{ type: "solapi", url: "" }, { type: "sheets", url: "" }] },
+    { title: "90일 이탈자", status: "active", ch: "kakao", timing: "90일 경과", detail: "운영 중. 60일 대비 비교.", msg: "", img: "", perf: { sent:189, reached:178, opened:98, clicked:21, converted:6, revenue:234000 }, links: [{ type: "solapi", url: "" }, { type: "sheets", url: "" }] },
+    { title: "체험단 3회 유도", status: "active", ch: "kakao", timing: "체험 후", detail: "운영 중. 필터링 자동화 완료.", msg: "", img: "", perf: { sent:120, reached:115, opened:89, clicked:34, converted:15, revenue:525000 }, links: [{ type: "solapi", url: "" }, { type: "sheets", url: "" }] },
+    { title: "180일+ 윈백", status: "gap", ch: "kakao", timing: "6개월 이상", detail: "미운영. 추가 시퀀스 없음.", msg: "", img: "", perf: null, links: [{ type: "solapi", url: "" }] }
+  ]},
+  { stage: "충성 고객", sub: "VIP / 장기", msgs: [
+    { title: "VIP 등급 전환", status: "gap", ch: "kakao", timing: "기준 충족 시", detail: "미운영. 등급 기준 미정립.", msg: "", img: "", perf: null, links: [] },
+    { title: "장기 고객 감사", status: "gap", ch: "kakao", timing: "1주년 등", detail: "미운영.", msg: "", img: "", perf: null, links: [{ type: "solapi", url: "" }] },
+    { title: "신제품 사전 안내", status: "gap", ch: "kakao", timing: "출시 전", detail: "미운영. 캔/레토르트/시즈닝 활용.", msg: "", img: "placeholder", perf: null, links: [{ type: "solapi", url: "" }, { type: "cafe24", url: "" }] }
+  ]}
+  ];
+}
+
+var CH_LABEL = { kakao:"알림톡", leaflet:"리플렛", cafe24:"카페24", manual:"수동" };
+var CH_CLS = { kakao:"tag-kakao", leaflet:"tag-leaflet", cafe24:"tag-cafe24", manual:"tag-manual" };
+var ST_CLS = { active:"tag-s-active", gap:"tag-s-gap", auto:"tag-s-auto" };
+var ST_LBL = { active:"운영 중", gap:"빈 구간", auto:"자동" };
+
+var scale = 0.55;
+var panX = 80, panY = 80;
+var dragging = false, dragStartX, dragStartY, panStartX, panStartY;
+var didDrag = false;
+var activeFilter = "all", searchQuery = "";
+var COL_W = 320, COL_GAP = 24, START_X = 0, START_Y = 0;
+var allExpanded = true;
+
+function pct(a,b){ return b>0? Math.round(a/b*100):0; }
+function fmt(n){ return n? n.toLocaleString("ko-KR"):"-"; }
+
+function buildLinkHTML(linksArr) {
+  if (!linksArr || linksArr.length === 0) return "";
+  var html = '<div class="node-links">';
+  linksArr.forEach(function(lk) {
+    var info = LINK_TYPES[lk.type] || { label: lk.type, icon: "🔗", cls: "link-default" };
+    var hasUrl = lk.url && lk.url.length > 0;
+    if (hasUrl) {
+      html += '<a class="node-link ' + info.cls + '" href="' + lk.url + '" target="_blank" rel="noopener" onclick="event.stopPropagation()">';
+    } else {
+      html += '<span class="node-link ' + info.cls + '" style="opacity:0.45;cursor:default" title="URL 미등록">';
+    }
+    html += '<span class="node-link-icon">' + info.icon + '</span>' + info.label;
+    if (hasUrl) {
+      html += ' ↗</a>';
+    } else {
+      html += '</span>';
+    }
+  });
+  html += '</div>';
+  return html;
+}
+
+function buildCanvas() {
+  var canvas = document.getElementById("canvas");
+  canvas.innerHTML = "";
+  var sq = searchQuery.toLowerCase();
+
+  DATA.forEach(function(s, si) {
+    var filtered = s.msgs.filter(function(m){
+      var sok = activeFilter==="all"||m.status===activeFilter;
+      var qok = !sq||m.title.toLowerCase().indexOf(sq)>=0||m.detail.toLowerCase().indexOf(sq)>=0||m.msg.toLowerCase().indexOf(sq)>=0;
+      return sok&&qok;
+    });
+    var col = document.createElement("div");
+    col.className = "stage-col";
+    col.style.left = (START_X + si*(COL_W+COL_GAP)) + "px";
+    col.style.top = START_Y + "px";
+
+    var aN=0,gN=0,auN=0;
+    filtered.forEach(function(m){ if(m.status==="active")aN++; else if(m.status==="gap")gN++; else if(m.status==="auto")auN++; });
+
+    var hdr = '<div class="stage-header-card"><div class="sh-num">STAGE ' + (si+1) + '</div><div class="sh-name">' + s.stage + '</div><div class="sh-sub">' + s.sub + '</div><div class="sh-counts">';
+    if(aN) hdr+='<span class="sh-count green">운영 '+aN+'</span>';
+    if(auN) hdr+='<span class="sh-count blue">자동 '+auN+'</span>';
+    if(gN) hdr+='<span class="sh-count red">빈 구간 '+gN+'</span>';
+    hdr+='</div></div>';
+    col.innerHTML = hdr;
+
+    filtered.forEach(function(m) {
+      var node = document.createElement("div");
+      node.className = "msg-node " + m.status + "-node" + (allExpanded ? "" : " collapsed");
+      node.addEventListener("click", function(e){ if(didDrag || e.target.closest(".node-msg-text") || e.target.closest(".node-link")) return; node.classList.toggle("collapsed"); });
+
+      var h = '<div class="node-header"><div class="node-top"><span class="node-title">' + m.title + ' <span class="node-toggle">&#9660;</span></span><span class="tag ' + ST_CLS[m.status] + '">' + ST_LBL[m.status] + '</span><span class="tag ' + CH_CLS[m.ch] + '">' + CH_LABEL[m.ch] + '</span><span class="node-timing">' + m.timing + '</span></div><div class="node-detail">' + m.detail + '</div></div>';
+
+      if (m.perf) {
+        var p=m.perf;
+        h+='<div class="node-perf"><div class="np-item"><div class="np-label">발송</div><div class="np-val">'+fmt(p.sent)+'</div></div><div class="np-item"><div class="np-label">열람률</div><div class="np-val">'+pct(p.opened,p.reached)+'%</div></div><div class="np-item"><div class="np-label">CTR</div><div class="np-val">'+pct(p.clicked,p.opened)+'%</div></div><div class="np-item"><div class="np-label">전환</div><div class="np-val">'+pct(p.converted,p.clicked)+'%</div></div></div>';
+      }
+      if (m.msg) {
+        var lb = m.status==="gap"?"초안":"현재 문구";
+        h+='<div class="node-msg"><div class="node-msg-label">'+lb+'</div><div class="node-msg-text">'+m.msg+'</div></div>';
+      }
+      if (m.img==="placeholder") {
+        h+='<div class="node-img"><div class="node-img-ph">이미지를 등록하세요</div></div>';
+      } else if (m.img) {
+        h+='<div class="node-img"><img src="'+m.img+'" onerror="this.parentElement.innerHTML=\'<div class=node-img-ph>로드 실패</div>\'" /></div>';
+      }
+
+      h += buildLinkHTML(m.links);
+
+      node.innerHTML = h;
+      col.appendChild(node);
+    });
+    canvas.appendChild(col);
+  });
+  applyTransform();
+  updateMinimap();
+}
+
+// ── 미니맵 ──
+function updateMinimap() {
+  var mc = document.getElementById("minimapCanvas");
+  var ctx = mc.getContext("2d");
+  var mw = 200, mh = 120;
+  mc.width = mw * 2; mc.height = mh * 2;
+  ctx.scale(2, 2);
+  ctx.clearRect(0, 0, mw, mh);
+
+  var totalW = DATA.length * (COL_W + COL_GAP);
+  var totalH = 2200;
+  var sx = mw / totalW;
+  var sy = mh / totalH;
+  var ms = Math.min(sx, sy) * 0.85;
+
+  var offsetX = (mw - totalW * ms) / 2;
+  var offsetY = 4;
+
+  DATA.forEach(function(s, si) {
+    var x = offsetX + si * (COL_W + COL_GAP) * ms;
+    var y = offsetY;
+    // header
+    ctx.fillStyle = "#0B1D3A";
+    ctx.fillRect(x, y, COL_W * ms, 12);
+    // nodes
+    var ny = y + 14;
+    var filtered = s.msgs.filter(function(m){
+      var sok = activeFilter==="all"||m.status===activeFilter;
+      return sok;
+    });
+    filtered.forEach(function(m) {
+      var color = m.status === "active" ? "#1D9E75" : m.status === "gap" ? "#D85A30" : "#378ADD";
+      ctx.fillStyle = color;
+      var nh = allExpanded ? 18 : 6;
+      ctx.fillRect(x, ny, COL_W * ms, nh);
+      ny += nh + 2;
+    });
+  });
+
+  // viewport indicator
+  var vw = window.innerWidth;
+  var vh = window.innerHeight - 48;
+  var vpX = offsetX + (-panX / scale) * ms;
+  var vpY = offsetY + (-panY / scale + 48 / scale) * ms;
+  var vpW = (vw / scale) * ms;
+  var vpH = (vh / scale) * ms;
+
+  var mvp = document.getElementById("minimapVP");
+  mvp.style.left = Math.max(0, vpX) + "px";
+  mvp.style.top = Math.max(0, vpY) + "px";
+  mvp.style.width = Math.min(vpW, mw) + "px";
+  mvp.style.height = Math.min(vpH, mh) + "px";
+}
+
+function applyTransform() {
+  var c = document.getElementById("canvas");
+  c.style.transform = "translate("+panX+"px,"+panY+"px) scale("+scale+")";
+  document.getElementById("zoomDisplay").textContent = Math.round(scale*100)+"%";
+  updateMinimap();
+}
+
+window.zoomTo = function(s) {
+  scale = Math.max(0.15, Math.min(2, s));
+  applyTransform();
+};
+
+window.fitAll = function() {
+  var totalW = DATA.length * (COL_W+COL_GAP);
+  var vw = window.innerWidth, vh = window.innerHeight - 48;
+  scale = Math.min(vw / (totalW+160), vh / 2400, 0.7);
+  panX = 60; panY = 70;
+  applyTransform();
+};
+
+window.setFilter = function(f) {
+  activeFilter = f;
+  document.querySelectorAll(".top-filter").forEach(function(b){ b.classList.toggle("on", b.dataset.f===f); });
+  buildCanvas();
+};
+window.setSearch = function(v) { searchQuery=v; buildCanvas(); };
+
+window.toggleAll = function() {
+  allExpanded = !allExpanded;
+  document.getElementById("toggleBtn").textContent = allExpanded ? "접기" : "펼치기";
+  document.querySelectorAll(".msg-node").forEach(function(n) {
+    if (allExpanded) n.classList.remove("collapsed");
+    else n.classList.add("collapsed");
+  });
+  updateMinimap();
+};
+
+// ── 팬/줌 이벤트 ──
+var vp = document.getElementById("canvas-viewport");
+
+vp.addEventListener("wheel", function(e) {
+  e.preventDefault();
+  var rect = vp.getBoundingClientRect();
+  var mx = e.clientX - rect.left;
+  var my = e.clientY - rect.top;
+  var oldScale = scale;
+  var delta = e.deltaY > 0 ? -0.08 : 0.08;
+  scale = Math.max(0.15, Math.min(2, scale + delta));
+  panX = mx - (mx - panX) * (scale / oldScale);
+  panY = my - (my - panY) * (scale / oldScale);
+  applyTransform();
+}, { passive: false });
+
+vp.addEventListener("mousedown", function(e) {
+  if (e.button !== 0) return;
+  dragging = true; didDrag = false;
+  dragStartX = e.clientX; dragStartY = e.clientY;
+  panStartX = panX; panStartY = panY;
+  vp.classList.add("grabbing");
+});
+
+window.addEventListener("mousemove", function(e) {
+  if (!dragging) return;
+  var dx = e.clientX - dragStartX, dy = e.clientY - dragStartY;
+  if (Math.abs(dx) > 3 || Math.abs(dy) > 3) didDrag = true;
+  panX = panStartX + dx;
+  panY = panStartY + dy;
+  applyTransform();
+});
+
+window.addEventListener("mouseup", function() {
+  dragging = false;
+  vp.classList.remove("grabbing");
+  setTimeout(function(){ didDrag = false; }, 50);
+});
+
+vp.addEventListener("dblclick", function(e) {
+  var rect = vp.getBoundingClientRect();
+  var mx = e.clientX - rect.left;
+  var my = e.clientY - rect.top;
+  var oldScale = scale;
+  scale = Math.min(2, scale * 1.5);
+  panX = mx - (mx - panX) * (scale / oldScale);
+  panY = my - (my - panY) * (scale / oldScale);
+  applyTransform();
+});
+
+// ── 터치 ──
+var touchDist = 0, touchMid = null;
+vp.addEventListener("touchstart", function(e) {
+  if (e.touches.length === 1) {
+    dragging = true;
+    dragStartX = e.touches[0].clientX; dragStartY = e.touches[0].clientY;
+    panStartX = panX; panStartY = panY;
+  } else if (e.touches.length === 2) {
+    dragging = false;
+    var dx = e.touches[0].clientX - e.touches[1].clientX;
+    var dy = e.touches[0].clientY - e.touches[1].clientY;
+    touchDist = Math.sqrt(dx*dx+dy*dy);
+    touchMid = { x:(e.touches[0].clientX+e.touches[1].clientX)/2, y:(e.touches[0].clientY+e.touches[1].clientY)/2 };
+  }
+}, { passive: false });
+
+vp.addEventListener("touchmove", function(e) {
+  e.preventDefault();
+  if (e.touches.length === 1 && dragging) {
+    panX = panStartX + (e.touches[0].clientX - dragStartX);
+    panY = panStartY + (e.touches[0].clientY - dragStartY);
+    applyTransform();
+  } else if (e.touches.length === 2 && touchDist > 0) {
+    var dx = e.touches[0].clientX - e.touches[1].clientX;
+    var dy = e.touches[0].clientY - e.touches[1].clientY;
+    var nd = Math.sqrt(dx*dx+dy*dy);
+    var r = nd/touchDist;
+    var oldScale = scale;
+    scale = Math.max(0.15, Math.min(2, scale*r));
+    var rect = vp.getBoundingClientRect();
+    var mx = touchMid.x - rect.left;
+    var my = touchMid.y - rect.top;
+    panX = mx - (mx-panX)*(scale/oldScale);
+    panY = my - (my-panY)*(scale/oldScale);
+    touchDist = nd;
+    applyTransform();
+  }
+}, { passive: false });
+
+vp.addEventListener("touchend", function() { dragging=false; touchDist=0; });
+
+// ── 힌트 자동 숨김 ──
+setTimeout(function(){ document.getElementById("helpHint").style.opacity="0"; document.getElementById("helpHint").style.transition="opacity 1s"; setTimeout(function(){ document.getElementById("helpHint").style.display="none"; },1000); }, 5000);
+
+// ── 초기화 ──
+loadData(function() {
+  buildCanvas();
+  fitAll();
+});
+</script>
+</body>
+</html>
