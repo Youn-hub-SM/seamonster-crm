@@ -247,6 +247,8 @@
   <button onclick="zoomTo(1)" title="100%" style="font-size:11px;">1:1</button>
   <div class="sep"></div>
   <button onclick="toggleAll()" id="toggleBtn" title="전체 펼치기/접기" style="font-size:11px;width:auto;padding:0 12px;">접기</button>
+  <div class="sep"></div>
+  <button onclick="refreshData()" id="refreshBtn" title="시트 데이터 새로고침" style="font-size:11px;width:auto;padding:0 12px;">새로고침</button>
 </div>
 <script>
 // ── 링크 타입 설정 ──
@@ -510,6 +512,17 @@ function buildTagFilters() {
 window.setTag = function(t) {
   activeTag = t;
   buildCanvas();
+};
+
+window.refreshData = function() {
+  var btn = document.getElementById("refreshBtn");
+  btn.textContent = "로딩...";
+  btn.style.opacity = "0.5";
+  loadData(function() {
+    buildCanvas();
+    btn.textContent = "새로고침";
+    btn.style.opacity = "1";
+  });
 };
 
 function buildLinkHTML(linksArr) {
