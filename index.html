@@ -687,8 +687,9 @@ window.genAI=async function(){
   var s=D[aiSI],m=s.msgs[aiMI];
   btnGen.disabled=true;btnGen.style.display="none";ld.classList.add("show");rb.classList.remove("show");act.style.display="none";
   try{
-    var res=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,system:"당신은 씨몬스터(seamonster) CRM 카피라이터입니다. 씨몬스터는 부산 기반 냉동 수산물 브랜드입니다. 슬로건: \"건강을 위한 수산물 섭취 문화를 만듭니다.\" 브랜드 보이스: 직관적, 정보 중심, 전문적 신뢰감. 메시지 본문만 출력하세요.",messages:[{role:"user",content:document.getElementById("aiPta").value}]})});
-    var data=await res.json();var txt=data.content&&data.content[0]?data.content[0].text:"생성 실패";
+    var r=await apiPost({action:"ai",prompt:document.getElementById("aiPta").value});
+    if(!r){ld.classList.remove("show");btnGen.disabled=false;btnGen.style.display="block";return;}
+    var txt=r.text||"생성 실패";
     aiRes=txt;rt.textContent=txt;rb.classList.add("show");act.style.display="flex";toast("초안 생성 완료");
   }catch(e){rt.textContent="오류: "+e.message;rb.classList.add("show");}
   ld.classList.remove("show");btnGen.disabled=false;btnGen.style.display="block";
