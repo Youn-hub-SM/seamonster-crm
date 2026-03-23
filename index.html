@@ -547,6 +547,25 @@ function buildLinkHTML(linksArr) {
   return html;
 }
 
+// 서브 스테이지 위치 재계산 (접기/펼치기 시 호출)
+var _subColData = [];
+function repositionSubs() {
+  setTimeout(function() {
+    _subColData.forEach(function(sc) {
+      var parentH = sc.parentCol.offsetHeight;
+      var subY = sc.y + parentH + SUB_Y_GAP;
+      _subColData.forEach(function(prev) {
+        if (prev === sc) return;
+        if (prev.parentNum === sc.parentNum && prev.col.style.top && parseInt(prev.col.style.top) < subY) {
+          var prevBottom = parseInt(prev.col.style.top) + prev.col.offsetHeight + SUB_Y_GAP;
+          if (prevBottom > subY) subY = prevBottom;
+        }
+      });
+      sc.col.style.top = subY + "px";
+    });
+  }, 10);
+}
+
 // 스테이지 번호로 메인/서브 분류
 function buildHierarchy() {
   var mains = [], subs = [], mainMap = {};
@@ -592,7 +611,7 @@ function renderStageCol(s, sq) {
   filtered.forEach(function(m) {
     var node = document.createElement("div");
     node.className = "msg-node " + m.status + "-node" + (allExpanded ? "" : " collapsed");
-    node.addEventListener("click", function(e){ if(didDrag || e.target.closest(".node-msg-text") || e.target.closest(".node-link")) return; node.classList.toggle("collapsed"); });
+    node.addEventListener("click", function(e){ if(didDrag || e.target.closest(".node-msg-text") || e.target.closest(".node-link")) return; node.classList.toggle("collapsed"); repositionSubs(); });
 
     var tagHTML = "";
     if (m.tags && m.tags.length) { m.tags.forEach(function(t){ tagHTML += '<span class="tag tag-custom">' + t + '</span>'; }); }
@@ -619,7 +638,7 @@ function renderStageCol(s, sq) {
   return col;
 }
 
-var SUB_Y_OFFSET = 600; // 서브 스테이지 Y 오프셋
+var SUB_Y_GAP = 20; // 메인과 서브 사이 여백
 
 function buildCanvas() {
   var canvas = document.getElementById("canvas");
@@ -628,6 +647,8 @@ function buildCanvas() {
   var hier = buildHierarchy();
   var positions = []; // { x, y, num, isSub, parentNum }
 
+  // 1단계: 메인 스테이지 렌더링
+  var mainCols = [];
   hier.mains.forEach(function(s, mi) {
     var x = START_X + mi * (COL_W + COL_GAP);
     var y = START_Y;
@@ -636,20 +657,46 @@ function buildCanvas() {
     col.style.top = y + "px";
     canvas.appendChild(col);
     positions.push({ x: x, y: y, num: s._num, isSub: false });
+    mainCols.push({ col: col, s: s, x: x, y: y, mi: mi });
+  });
 
-    // 서브 스테이지 배치
-    var entry = hier.mainMap[s._num];
+  // 2단계: 서브 스테이지를 임시 배치 후, 높이 계산해서 재배치
+  var subCols = [];
+  _subColData = [];
+  mainCols.forEach(function(mc) {
+    var entry = hier.mainMap[mc.s._num];
     if (entry && entry.subs.length > 0) {
-      entry.subs.forEach(function(sub, si) {
-        var subY = y + SUB_Y_OFFSET + si * SUB_Y_OFFSET;
+      entry.subs.forEach(function(sub) {
         var subCol = renderStageCol(sub, sq);
-        subCol.style.left = x + "px";
-        subCol.style.top = subY + "px";
+        subCol.style.left = mc.x + "px";
+        subCol.style.top = "0px";
         canvas.appendChild(subCol);
-        positions.push({ x: x, y: subY, num: sub._num, isSub: true, parentNum: s._num });
+        var scData = { col: subCol, parentCol: mc.col, x: mc.x, y: mc.y, parentNum: mc.s._num, num: sub._num };
+        subCols.push(scData);
+        _subColData.push(scData);
       });
     }
   });
+
+  // 3단계: DOM 렌더 후 실제 높이로 재배치
+  setTimeout(function() {
+    subCols.forEach(function(sc) {
+      var parentH = sc.parentCol.offsetHeight;
+      var subY = sc.y + parentH + SUB_Y_GAP;
+      // 이미 배치된 서브 중 같은 부모 아래 것들의 높이 누적
+      subCols.forEach(function(prev) {
+        if (prev === sc) return;
+        if (prev.parentNum === sc.parentNum && prev._finalY !== undefined && prev._finalY < subY) {
+          var prevBottom = prev._finalY + prev.col.offsetHeight + SUB_Y_GAP;
+          if (prevBottom > subY) subY = prevBottom;
+        }
+      });
+      sc.col.style.top = subY + "px";
+      sc._finalY = subY;
+      positions.push({ x: sc.x, y: subY, num: sc.num, isSub: true, parentNum: sc.parentNum, parentH: parentH });
+    });
+    drawConnectors(hier, positions);
+  }, 0);
 
   drawConnectors(hier, positions);
   applyTransform();
@@ -668,7 +715,7 @@ function drawConnectors(hier, positions) {
   var maxX = 0, maxY = 0;
   positions.forEach(function(p) {
     if (p.x + COL_W > maxX) maxX = p.x + COL_W;
-    if (p.y + SUB_Y_OFFSET > maxY) maxY = p.y + SUB_Y_OFFSET;
+    if (p.y + 600 > maxY) maxY = p.y + 600;
   });
 
   var svg = document.createElementNS(svgNS, "svg");
@@ -717,18 +764,6 @@ function drawConnectors(hier, positions) {
     var y = mainPos[i].y + 28;
     addLine(x1, y, x2, y, "#0B1D3A", "arrowH");
   }
-
-  // 메인 → 서브 세로 화살표
-  var subPos = positions.filter(function(p) { return p.isSub; });
-  subPos.forEach(function(sp) {
-    var parent = mainPos.filter(function(p) { return p.num === sp.parentNum; })[0];
-    if (parent) {
-      var cx = parent.x + COL_W / 2;
-      var y1 = parent.y + 90;
-      var y2 = sp.y - 4;
-      addLine(cx, y1, cx, y2, "#F15A30", "arrowV");
-    }
-  });
 
   document.getElementById("canvas").appendChild(svg);
 }
@@ -817,11 +852,7 @@ window.setSearch = function(v) { searchQuery=v; buildCanvas(); };
 window.toggleAll = function() {
   allExpanded = !allExpanded;
   document.getElementById("toggleBtn").textContent = allExpanded ? "접기" : "펼치기";
-  document.querySelectorAll(".msg-node").forEach(function(n) {
-    if (allExpanded) n.classList.remove("collapsed");
-    else n.classList.add("collapsed");
-  });
-  updateMinimap();
+  buildCanvas();
 };
 
 // ── 팬/줌 이벤트 ──
