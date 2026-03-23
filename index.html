@@ -547,119 +547,188 @@ function buildLinkHTML(linksArr) {
   return html;
 }
 
+// 스테이지 번호로 메인/서브 분류
+function buildHierarchy() {
+  var mains = [], subs = [], mainMap = {};
+  DATA.forEach(function(s, i) {
+    var num = s.stageNum || String(i + 1);
+    s._num = num;
+    s._idx = i;
+    if (num.indexOf("-") > -1) {
+      var parent = num.split("-")[0];
+      subs.push({ stage: s, parent: parent });
+    } else {
+      mains.push(s);
+      mainMap[num] = { stage: s, subs: [], mainIdx: mains.length - 1 };
+    }
+  });
+  subs.forEach(function(sub) {
+    if (mainMap[sub.parent]) mainMap[sub.parent].subs.push(sub.stage);
+  });
+  return { mains: mains, mainMap: mainMap };
+}
+
+function renderStageCol(s, sq) {
+  var filtered = s.msgs.filter(function(m){
+    var sok = activeFilter==="all"||m.status===activeFilter;
+    var qok = !sq||m.title.toLowerCase().indexOf(sq)>=0||m.detail.toLowerCase().indexOf(sq)>=0||m.msg.toLowerCase().indexOf(sq)>=0;
+    var tok = activeTag==="all"||( m.tags && m.tags.indexOf(activeTag)>=0 );
+    return sok&&qok&&tok;
+  });
+  var col = document.createElement("div");
+  col.className = "stage-col";
+
+  var aN=0,gN=0,auN=0;
+  filtered.forEach(function(m){ if(m.status==="active")aN++; else if(m.status==="gap")gN++; else if(m.status==="auto")auN++; });
+
+  var stageLabel = s.stageNum || s._num;
+  var hdr = '<div class="stage-header-card"><div class="sh-num">STAGE ' + stageLabel + '</div><div class="sh-name">' + s.stage + '</div><div class="sh-sub">' + s.sub + '</div><div class="sh-counts">';
+  if(aN) hdr+='<span class="sh-count green">운영 '+aN+'</span>';
+  if(auN) hdr+='<span class="sh-count blue">자동 '+auN+'</span>';
+  if(gN) hdr+='<span class="sh-count red">빈 구간 '+gN+'</span>';
+  hdr+='</div></div>';
+  col.innerHTML = hdr;
+
+  filtered.forEach(function(m) {
+    var node = document.createElement("div");
+    node.className = "msg-node " + m.status + "-node" + (allExpanded ? "" : " collapsed");
+    node.addEventListener("click", function(e){ if(didDrag || e.target.closest(".node-msg-text") || e.target.closest(".node-link")) return; node.classList.toggle("collapsed"); });
+
+    var tagHTML = "";
+    if (m.tags && m.tags.length) { m.tags.forEach(function(t){ tagHTML += '<span class="tag tag-custom">' + t + '</span>'; }); }
+    var h = '<div class="node-header"><div class="node-top"><span class="node-title">' + m.title + ' <span class="node-toggle">&#9660;</span></span><span class="tag ' + ST_CLS[m.status] + '">' + ST_LBL[m.status] + '</span><span class="tag ' + CH_CLS[m.ch] + '">' + CH_LABEL[m.ch] + '</span>' + tagHTML + '<span class="node-timing">' + m.timing + '</span></div><div class="node-detail">' + m.detail + '</div></div>';
+
+    if (m.perf) {
+      var p=m.perf;
+      h+='<div class="node-perf"><div class="np-item"><div class="np-label">발송</div><div class="np-val">'+fmt(p.sent)+'</div></div><div class="np-item"><div class="np-label">열람률</div><div class="np-val">'+pct(p.opened,p.reached)+'%</div></div><div class="np-item"><div class="np-label">CTR</div><div class="np-val">'+pct(p.clicked,p.opened)+'%</div></div><div class="np-item"><div class="np-label">전환</div><div class="np-val">'+pct(p.converted,p.clicked)+'%</div></div></div>';
+    }
+    if (m.msg) {
+      var lb = m.status==="gap"?"초안":"현재 문구";
+      h+='<div class="node-msg"><div class="node-msg-label">'+lb+'</div><div class="node-msg-text">'+m.msg+'</div></div>';
+    }
+    if (m.img==="placeholder") {
+      h+='<div class="node-img"><div class="node-img-ph">이미지를 등록하세요</div></div>';
+    } else if (m.img) {
+      h+='<div class="node-img"><img src="'+m.img+'" onerror="this.parentElement.innerHTML=\'<div class=node-img-ph>로드 실패</div>\'" /></div>';
+    }
+
+    h += buildLinkHTML(m.links);
+    node.innerHTML = h;
+    col.appendChild(node);
+  });
+  return col;
+}
+
+var SUB_Y_OFFSET = 600; // 서브 스테이지 Y 오프셋
+
 function buildCanvas() {
   var canvas = document.getElementById("canvas");
   canvas.innerHTML = "";
   var sq = searchQuery.toLowerCase();
+  var hier = buildHierarchy();
+  var positions = []; // { x, y, num, isSub, parentNum }
 
-  DATA.forEach(function(s, si) {
-    var filtered = s.msgs.filter(function(m){
-      var sok = activeFilter==="all"||m.status===activeFilter;
-      var qok = !sq||m.title.toLowerCase().indexOf(sq)>=0||m.detail.toLowerCase().indexOf(sq)>=0||m.msg.toLowerCase().indexOf(sq)>=0;
-      var tok = activeTag==="all"||( m.tags && m.tags.indexOf(activeTag)>=0 );
-      return sok&&qok&&tok;
-    });
-    var col = document.createElement("div");
-    col.className = "stage-col";
-    col.style.left = (START_X + si*(COL_W+COL_GAP)) + "px";
-    col.style.top = START_Y + "px";
-
-    var aN=0,gN=0,auN=0;
-    filtered.forEach(function(m){ if(m.status==="active")aN++; else if(m.status==="gap")gN++; else if(m.status==="auto")auN++; });
-
-    var stageLabel = s.stageNum || (si+1);
-    var hdr = '<div class="stage-header-card"><div class="sh-num">STAGE ' + stageLabel + '</div><div class="sh-name">' + s.stage + '</div><div class="sh-sub">' + s.sub + '</div><div class="sh-counts">';
-    if(aN) hdr+='<span class="sh-count green">운영 '+aN+'</span>';
-    if(auN) hdr+='<span class="sh-count blue">자동 '+auN+'</span>';
-    if(gN) hdr+='<span class="sh-count red">빈 구간 '+gN+'</span>';
-    hdr+='</div></div>';
-    col.innerHTML = hdr;
-
-    filtered.forEach(function(m) {
-      var node = document.createElement("div");
-      node.className = "msg-node " + m.status + "-node" + (allExpanded ? "" : " collapsed");
-      node.addEventListener("click", function(e){ if(didDrag || e.target.closest(".node-msg-text") || e.target.closest(".node-link")) return; node.classList.toggle("collapsed"); });
-
-      var tagHTML = "";
-      if (m.tags && m.tags.length) { m.tags.forEach(function(t){ tagHTML += '<span class="tag tag-custom">' + t + '</span>'; }); }
-      var h = '<div class="node-header"><div class="node-top"><span class="node-title">' + m.title + ' <span class="node-toggle">&#9660;</span></span><span class="tag ' + ST_CLS[m.status] + '">' + ST_LBL[m.status] + '</span><span class="tag ' + CH_CLS[m.ch] + '">' + CH_LABEL[m.ch] + '</span>' + tagHTML + '<span class="node-timing">' + m.timing + '</span></div><div class="node-detail">' + m.detail + '</div></div>';
-
-      if (m.perf) {
-        var p=m.perf;
-        h+='<div class="node-perf"><div class="np-item"><div class="np-label">발송</div><div class="np-val">'+fmt(p.sent)+'</div></div><div class="np-item"><div class="np-label">열람률</div><div class="np-val">'+pct(p.opened,p.reached)+'%</div></div><div class="np-item"><div class="np-label">CTR</div><div class="np-val">'+pct(p.clicked,p.opened)+'%</div></div><div class="np-item"><div class="np-label">전환</div><div class="np-val">'+pct(p.converted,p.clicked)+'%</div></div></div>';
-      }
-      if (m.msg) {
-        var lb = m.status==="gap"?"초안":"현재 문구";
-        h+='<div class="node-msg"><div class="node-msg-label">'+lb+'</div><div class="node-msg-text">'+m.msg+'</div></div>';
-      }
-      if (m.img==="placeholder") {
-        h+='<div class="node-img"><div class="node-img-ph">이미지를 등록하세요</div></div>';
-      } else if (m.img) {
-        h+='<div class="node-img"><img src="'+m.img+'" onerror="this.parentElement.innerHTML=\'<div class=node-img-ph>로드 실패</div>\'" /></div>';
-      }
-
-      h += buildLinkHTML(m.links);
-
-      node.innerHTML = h;
-      col.appendChild(node);
-    });
+  hier.mains.forEach(function(s, mi) {
+    var x = START_X + mi * (COL_W + COL_GAP);
+    var y = START_Y;
+    var col = renderStageCol(s, sq);
+    col.style.left = x + "px";
+    col.style.top = y + "px";
     canvas.appendChild(col);
+    positions.push({ x: x, y: y, num: s._num, isSub: false });
+
+    // 서브 스테이지 배치
+    var entry = hier.mainMap[s._num];
+    if (entry && entry.subs.length > 0) {
+      entry.subs.forEach(function(sub, si) {
+        var subY = y + SUB_Y_OFFSET + si * SUB_Y_OFFSET;
+        var subCol = renderStageCol(sub, sq);
+        subCol.style.left = x + "px";
+        subCol.style.top = subY + "px";
+        canvas.appendChild(subCol);
+        positions.push({ x: x, y: subY, num: sub._num, isSub: true, parentNum: s._num });
+      });
+    }
   });
-  drawConnectors();
+
+  drawConnectors(hier, positions);
   applyTransform();
   updateMinimap();
   buildTagFilters();
 }
 
 // ── 커넥터 화살표 ──
-function drawConnectors() {
+function drawConnectors(hier, positions) {
   var existing = document.querySelector(".connector-svg");
   if (existing) existing.remove();
 
-  var stageCount = DATA.length;
-  if (stageCount < 2) return;
+  if (!positions || positions.length < 2) return;
 
-  var totalW = stageCount * (COL_W + COL_GAP);
   var svgNS = "http://www.w3.org/2000/svg";
+  var maxX = 0, maxY = 0;
+  positions.forEach(function(p) {
+    if (p.x + COL_W > maxX) maxX = p.x + COL_W;
+    if (p.y + SUB_Y_OFFSET > maxY) maxY = p.y + SUB_Y_OFFSET;
+  });
+
   var svg = document.createElementNS(svgNS, "svg");
   svg.setAttribute("class", "connector-svg");
-  svg.setAttribute("width", totalW);
-  svg.setAttribute("height", 80);
-  svg.style.top = "20px";
+  svg.setAttribute("width", maxX + 100);
+  svg.setAttribute("height", maxY + 100);
 
-  // 화살표 마커 정의
+  // 화살표 마커
   var defs = document.createElementNS(svgNS, "defs");
-  var marker = document.createElementNS(svgNS, "marker");
-  marker.setAttribute("id", "arrowhead");
-  marker.setAttribute("markerWidth", "8");
-  marker.setAttribute("markerHeight", "6");
-  marker.setAttribute("refX", "8");
-  marker.setAttribute("refY", "3");
-  marker.setAttribute("orient", "auto");
-  var polygon = document.createElementNS(svgNS, "polygon");
-  polygon.setAttribute("points", "0 0, 8 3, 0 6");
-  polygon.setAttribute("fill", "#0B1D3A");
-  polygon.setAttribute("opacity", "0.35");
-  marker.appendChild(polygon);
-  defs.appendChild(marker);
+  ["arrowH", "arrowV"].forEach(function(id) {
+    var marker = document.createElementNS(svgNS, "marker");
+    marker.setAttribute("id", id);
+    marker.setAttribute("markerWidth", "8");
+    marker.setAttribute("markerHeight", "6");
+    marker.setAttribute("refX", "8");
+    marker.setAttribute("refY", "3");
+    marker.setAttribute("orient", "auto");
+    var polygon = document.createElementNS(svgNS, "polygon");
+    polygon.setAttribute("points", "0 0, 8 3, 0 6");
+    polygon.setAttribute("fill", id === "arrowH" ? "#0B1D3A" : "#F15A30");
+    polygon.setAttribute("opacity", "0.5");
+    marker.appendChild(polygon);
+    defs.appendChild(marker);
+  });
   svg.appendChild(defs);
 
-  for (var i = 0; i < stageCount - 1; i++) {
-    var x1 = START_X + i * (COL_W + COL_GAP) + COL_W;
-    var x2 = START_X + (i + 1) * (COL_W + COL_GAP);
-    var y = 28;
+  function addLine(x1, y1, x2, y2, color, markerId) {
     var line = document.createElementNS(svgNS, "line");
-    line.setAttribute("x1", x1 + 4);
-    line.setAttribute("y1", y);
-    line.setAttribute("x2", x2 - 4);
-    line.setAttribute("y2", y);
-    line.setAttribute("stroke", "#0B1D3A");
+    line.setAttribute("x1", x1);
+    line.setAttribute("y1", y1);
+    line.setAttribute("x2", x2);
+    line.setAttribute("y2", y2);
+    line.setAttribute("stroke", color);
     line.setAttribute("stroke-width", "2");
     line.setAttribute("stroke-dasharray", "6 4");
-    line.setAttribute("opacity", "0.25");
-    line.setAttribute("marker-end", "url(#arrowhead)");
+    line.setAttribute("opacity", "0.35");
+    line.setAttribute("marker-end", "url(#" + markerId + ")");
     svg.appendChild(line);
   }
+
+  // 메인 → 메인 가로 화살표
+  var mainPos = positions.filter(function(p) { return !p.isSub; });
+  for (var i = 0; i < mainPos.length - 1; i++) {
+    var x1 = mainPos[i].x + COL_W + 4;
+    var x2 = mainPos[i + 1].x - 4;
+    var y = mainPos[i].y + 28;
+    addLine(x1, y, x2, y, "#0B1D3A", "arrowH");
+  }
+
+  // 메인 → 서브 세로 화살표
+  var subPos = positions.filter(function(p) { return p.isSub; });
+  subPos.forEach(function(sp) {
+    var parent = mainPos.filter(function(p) { return p.num === sp.parentNum; })[0];
+    if (parent) {
+      var cx = parent.x + COL_W / 2;
+      var y1 = parent.y + 90;
+      var y2 = sp.y - 4;
+      addLine(cx, y1, cx, y2, "#F15A30", "arrowV");
+    }
+  });
 
   document.getElementById("canvas").appendChild(svg);
 }
