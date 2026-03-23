@@ -157,6 +157,7 @@
   .tag-cafe24 { background: var(--blue-bg); color: var(--blue-dark); }
   .tag-manual { background: var(--gray-100); color: var(--gray-600); }
   .tag-custom { background: #F0EBF8; color: #6B45B0; }
+  .tag-onsite { background: #E0F2F1; color: #00695C; }
   .tag-s-active { background: var(--green-bg); color: var(--green-dark); }
   .tag-s-gap { background: var(--red-bg); color: var(--red-dark); }
   .tag-s-auto { background: var(--blue-bg); color: var(--blue-dark); }
@@ -198,6 +199,7 @@
   .link-sheets { background: #E8F5E9; color: #1B5E20; }
   .link-channel { background: #FFF8E1; color: #8D6E00; }
   .link-blog { background: var(--orange-light); color: var(--orange-dark); }
+  .link-onsite { background: #E0F2F1; color: #00695C; }
   .link-default { background: var(--gray-100); color: var(--gray-600); }
   .connector-svg {
     position: absolute; top: 0; left: 0; pointer-events: none; z-index: 0; overflow: visible;
@@ -258,7 +260,8 @@ var LINK_TYPES = {
   meta:    { label: "메타 광고",     icon: "📢", cls: "link-meta" },
   sheets:  { label: "Google Sheets", icon: "📊", cls: "link-sheets" },
   channel: { label: "카카오채널",    icon: "💬", cls: "link-channel" },
-  blog:    { label: "블로그",        icon: "📝", cls: "link-blog" }
+  blog:    { label: "블로그",        icon: "📝", cls: "link-blog" },
+  onsite:  { label: "온사이트",      icon: "🖥️", cls: "link-onsite" }
 };
 
 // ══════════════════════════════════════════════════════════
@@ -309,6 +312,7 @@ function csvToData(rows) {
     '솔라피 url': 'link_solapi', '카페24 url': 'link_cafe24',
     '메타광고 url': 'link_meta', 'sheets url': 'link_sheets',
     '카카오채널 url': 'link_channel', '블로그 url': 'link_blog',
+    '온사이트 url': 'link_onsite',
     '발송수': 'perf_sent', '도달': 'perf_reached', '열람': 'perf_opened',
     '클릭': 'perf_clicked', '전환': 'perf_converted', '매출': 'perf_revenue',
     '태그': 'tags', '스테이지번호': 'stage_num'
@@ -338,7 +342,7 @@ function csvToData(rows) {
     }
 
     var links = [];
-    ["solapi","cafe24","meta","sheets","channel","blog"].forEach(function(lt) {
+    ["solapi","cafe24","meta","sheets","channel","blog","onsite"].forEach(function(lt) {
       var url = g(row, "link_" + lt);
       if (url || ci["link_" + lt] !== undefined) {
         links.push({ type: lt, url: url });
@@ -466,8 +470,8 @@ function getFallbackData() {
   ];
 }
 
-var CH_LABEL = { kakao:"알림톡", leaflet:"리플렛", cafe24:"카페24", manual:"수동" };
-var CH_CLS = { kakao:"tag-kakao", leaflet:"tag-leaflet", cafe24:"tag-cafe24", manual:"tag-manual" };
+var CH_LABEL = { kakao:"알림톡", leaflet:"리플렛", cafe24:"카페24", manual:"수동", onsite:"온사이트" };
+var CH_CLS = { kakao:"tag-kakao", leaflet:"tag-leaflet", cafe24:"tag-cafe24", manual:"tag-manual", onsite:"tag-onsite" };
 var ST_CLS = { active:"tag-s-active", gap:"tag-s-gap", auto:"tag-s-auto" };
 var ST_LBL = { active:"운영 중", gap:"빈 구간", auto:"자동" };
 
@@ -547,44 +551,79 @@ function buildLinkHTML(linksArr) {
   return html;
 }
 
-// 서브 스테이지 위치 재계산 (접기/펼치기 시 호출)
-var _subColData = [];
-function repositionSubs() {
-  setTimeout(function() {
-    _subColData.forEach(function(sc) {
-      var parentH = sc.parentCol.offsetHeight;
-      var subY = sc.y + parentH + SUB_Y_GAP;
-      _subColData.forEach(function(prev) {
-        if (prev === sc) return;
-        if (prev.parentNum === sc.parentNum && prev.col.style.top && parseInt(prev.col.style.top) < subY) {
-          var prevBottom = parseInt(prev.col.style.top) + prev.col.offsetHeight + SUB_Y_GAP;
-          if (prevBottom > subY) subY = prevBottom;
-        }
-      });
-      sc.col.style.top = subY + "px";
-    });
-  }, 10);
+// 스테이지 번호 비교 (1, 2, 2-1, 2-1-1, 2-2, 3 ...)
+function compareStageNum(a, b) {
+  var pa = a.split("-").map(Number);
+  var pb = b.split("-").map(Number);
+  for (var i = 0; i < Math.max(pa.length, pb.length); i++) {
+    var va = pa[i] || 0, vb = pb[i] || 0;
+    if (va !== vb) return va - vb;
+  }
+  return 0;
 }
 
-// 스테이지 번호로 메인/서브 분류
+// 트리 구조로 빌드 (무한 깊이 지원)
 function buildHierarchy() {
-  var mains = [], subs = [], mainMap = {};
+  var nodeMap = {};
+  var roots = [];
+
   DATA.forEach(function(s, i) {
     var num = s.stageNum || String(i + 1);
     s._num = num;
     s._idx = i;
-    if (num.indexOf("-") > -1) {
-      var parent = num.split("-")[0];
-      subs.push({ stage: s, parent: parent });
+    s._depth = (num.match(/-/g) || []).length;
+    nodeMap[num] = { stage: s, children: [] };
+  });
+
+  // 번호순 정렬 후 부모에 연결
+  var nums = Object.keys(nodeMap).sort(compareStageNum);
+  nums.forEach(function(num) {
+    var parts = num.split("-");
+    if (parts.length === 1) {
+      roots.push(nodeMap[num]);
     } else {
-      mains.push(s);
-      mainMap[num] = { stage: s, subs: [], mainIdx: mains.length - 1 };
+      var parentNum = parts.slice(0, -1).join("-");
+      if (nodeMap[parentNum]) {
+        nodeMap[parentNum].children.push(nodeMap[num]);
+      } else {
+        roots.push(nodeMap[num]); // 부모 없으면 루트
+      }
     }
   });
-  subs.forEach(function(sub) {
-    if (mainMap[sub.parent]) mainMap[sub.parent].subs.push(sub.stage);
+
+  return { roots: roots, nodeMap: nodeMap };
+}
+
+// 모든 서브 스테이지 위치 재계산
+var _rendered = {};
+var _hier = null;
+function repositionAll() {
+  if (!_hier) return;
+  setTimeout(function() {
+    _hier.roots.forEach(function(root) {
+      var r = _rendered[root.stage._num];
+      if (!r) return;
+      var nextY = r.y + r.col.offsetHeight + SUB_Y_GAP;
+      nextY = positionChildrenRecursive(root, r.x, nextY);
+    });
+  }, 10);
+}
+
+function positionChildrenRecursive(parentNode, parentX, startY) {
+  var y = startY;
+  parentNode.children.forEach(function(child) {
+    var r = _rendered[child.stage._num];
+    if (!r) return;
+    var cx = parentX + INDENT;
+    r.col.style.left = cx + "px";
+    r.col.style.top = y + "px";
+    r.x = cx;
+    r.y = y;
+    var childBottom = y + r.col.offsetHeight + SUB_Y_GAP;
+    childBottom = positionChildrenRecursive(child, cx, childBottom);
+    y = childBottom;
   });
-  return { mains: mains, mainMap: mainMap };
+  return y;
 }
 
 function renderStageCol(s, sq) {
@@ -611,7 +650,7 @@ function renderStageCol(s, sq) {
   filtered.forEach(function(m) {
     var node = document.createElement("div");
     node.className = "msg-node " + m.status + "-node" + (allExpanded ? "" : " collapsed");
-    node.addEventListener("click", function(e){ if(didDrag || e.target.closest(".node-msg-text") || e.target.closest(".node-link")) return; node.classList.toggle("collapsed"); repositionSubs(); });
+    node.addEventListener("click", function(e){ if(didDrag || e.target.closest(".node-msg-text") || e.target.closest(".node-link")) return; node.classList.toggle("collapsed"); repositionAll(); });
 
     var tagHTML = "";
     if (m.tags && m.tags.length) { m.tags.forEach(function(t){ tagHTML += '<span class="tag tag-custom">' + t + '</span>'; }); }
@@ -638,90 +677,87 @@ function renderStageCol(s, sq) {
   return col;
 }
 
-var SUB_Y_GAP = 20; // 메인과 서브 사이 여백
+var SUB_Y_GAP = 20;
+var INDENT = 28; // 서브 스테이지 들여쓰기
 
 function buildCanvas() {
   var canvas = document.getElementById("canvas");
   canvas.innerHTML = "";
   var sq = searchQuery.toLowerCase();
-  var hier = buildHierarchy();
-  var positions = []; // { x, y, num, isSub, parentNum }
+  _hier = buildHierarchy();
+  _rendered = {};
 
-  // 1단계: 메인 스테이지 렌더링
-  var mainCols = [];
-  hier.mains.forEach(function(s, mi) {
-    var x = START_X + mi * (COL_W + COL_GAP);
+  // 모든 노드를 렌더링 (임시 위치)
+  function renderAll(node) {
+    var col = renderStageCol(node.stage, sq);
+    col.style.left = "0px";
+    col.style.top = "0px";
+    canvas.appendChild(col);
+    _rendered[node.stage._num] = { col: col, x: 0, y: 0 };
+    node.children.forEach(function(child) { renderAll(child); });
+  }
+
+  // 루트 스테이지 가로 배치
+  _hier.roots.forEach(function(root, i) {
+    var x = START_X + i * (COL_W + COL_GAP);
     var y = START_Y;
-    var col = renderStageCol(s, sq);
+    var col = renderStageCol(root.stage, sq);
     col.style.left = x + "px";
     col.style.top = y + "px";
     canvas.appendChild(col);
-    positions.push({ x: x, y: y, num: s._num, isSub: false });
-    mainCols.push({ col: col, s: s, x: x, y: y, mi: mi });
-  });
+    _rendered[root.stage._num] = { col: col, x: x, y: y };
 
-  // 2단계: 서브 스테이지를 임시 배치 후, 높이 계산해서 재배치
-  var subCols = [];
-  _subColData = [];
-  mainCols.forEach(function(mc) {
-    var entry = hier.mainMap[mc.s._num];
-    if (entry && entry.subs.length > 0) {
-      entry.subs.forEach(function(sub) {
-        var subCol = renderStageCol(sub, sq);
-        subCol.style.left = mc.x + "px";
-        subCol.style.top = "0px";
-        canvas.appendChild(subCol);
-        var scData = { col: subCol, parentCol: mc.col, x: mc.x, y: mc.y, parentNum: mc.s._num, num: sub._num };
-        subCols.push(scData);
-        _subColData.push(scData);
+    // 자식들도 렌더 (임시 위치)
+    function renderChildren(parentNode) {
+      parentNode.children.forEach(function(child) {
+        var childCol = renderStageCol(child.stage, sq);
+        childCol.style.left = "0px";
+        childCol.style.top = "0px";
+        canvas.appendChild(childCol);
+        _rendered[child.stage._num] = { col: childCol, x: 0, y: 0 };
+        renderChildren(child);
       });
     }
+    renderChildren(root);
   });
 
-  // 3단계: DOM 렌더 후 실제 높이로 재배치
+  // DOM 렌더 후 실제 높이로 재배치
   setTimeout(function() {
-    subCols.forEach(function(sc) {
-      var parentH = sc.parentCol.offsetHeight;
-      var subY = sc.y + parentH + SUB_Y_GAP;
-      // 이미 배치된 서브 중 같은 부모 아래 것들의 높이 누적
-      subCols.forEach(function(prev) {
-        if (prev === sc) return;
-        if (prev.parentNum === sc.parentNum && prev._finalY !== undefined && prev._finalY < subY) {
-          var prevBottom = prev._finalY + prev.col.offsetHeight + SUB_Y_GAP;
-          if (prevBottom > subY) subY = prevBottom;
-        }
-      });
-      sc.col.style.top = subY + "px";
-      sc._finalY = subY;
-      positions.push({ x: sc.x, y: subY, num: sc.num, isSub: true, parentNum: sc.parentNum, parentH: parentH });
+    _hier.roots.forEach(function(root) {
+      var r = _rendered[root.stage._num];
+      var nextY = r.y + r.col.offsetHeight + SUB_Y_GAP;
+      positionChildrenRecursive(root, r.x, nextY);
     });
-    drawConnectors(hier, positions);
-  }, 0);
+    drawConnectors();
+  }, 10);
 
-  drawConnectors(hier, positions);
   applyTransform();
   updateMinimap();
   buildTagFilters();
 }
 
 // ── 커넥터 화살표 ──
-function drawConnectors(hier, positions) {
+function drawConnectors() {
   var existing = document.querySelector(".connector-svg");
   if (existing) existing.remove();
-
-  if (!positions || positions.length < 2) return;
+  if (!_hier || !_rendered) return;
 
   var svgNS = "http://www.w3.org/2000/svg";
+
+  // 전체 크기 계산
   var maxX = 0, maxY = 0;
-  positions.forEach(function(p) {
-    if (p.x + COL_W > maxX) maxX = p.x + COL_W;
-    if (p.y + 600 > maxY) maxY = p.y + 600;
+  Object.keys(_rendered).forEach(function(num) {
+    var r = _rendered[num];
+    var rx = r.x + COL_W;
+    var ry = r.y + (r.col ? r.col.offsetHeight : 200);
+    if (rx > maxX) maxX = rx;
+    if (ry > maxY) maxY = ry;
   });
 
   var svg = document.createElementNS(svgNS, "svg");
   svg.setAttribute("class", "connector-svg");
-  svg.setAttribute("width", maxX + 100);
-  svg.setAttribute("height", maxY + 100);
+  svg.setAttribute("width", maxX + 200);
+  svg.setAttribute("height", maxY + 200);
 
   // 화살표 마커
   var defs = document.createElementNS(svgNS, "defs");
@@ -742,28 +778,48 @@ function drawConnectors(hier, positions) {
   });
   svg.appendChild(defs);
 
-  function addLine(x1, y1, x2, y2, color, markerId) {
-    var line = document.createElementNS(svgNS, "line");
-    line.setAttribute("x1", x1);
-    line.setAttribute("y1", y1);
-    line.setAttribute("x2", x2);
-    line.setAttribute("y2", y2);
-    line.setAttribute("stroke", color);
-    line.setAttribute("stroke-width", "2");
-    line.setAttribute("stroke-dasharray", "6 4");
-    line.setAttribute("opacity", "0.35");
-    line.setAttribute("marker-end", "url(#" + markerId + ")");
-    svg.appendChild(line);
+  function addPath(d, color, markerId) {
+    var path = document.createElementNS(svgNS, "path");
+    path.setAttribute("d", d);
+    path.setAttribute("stroke", color);
+    path.setAttribute("stroke-width", "2");
+    path.setAttribute("stroke-dasharray", "6 4");
+    path.setAttribute("opacity", "0.35");
+    path.setAttribute("fill", "none");
+    path.setAttribute("marker-end", "url(#" + markerId + ")");
+    svg.appendChild(path);
   }
 
-  // 메인 → 메인 가로 화살표
-  var mainPos = positions.filter(function(p) { return !p.isSub; });
-  for (var i = 0; i < mainPos.length - 1; i++) {
-    var x1 = mainPos[i].x + COL_W + 4;
-    var x2 = mainPos[i + 1].x - 4;
-    var y = mainPos[i].y + 28;
-    addLine(x1, y, x2, y, "#0B1D3A", "arrowH");
+  // 1) 루트 → 루트 가로 화살표
+  for (var i = 0; i < _hier.roots.length - 1; i++) {
+    var r1 = _rendered[_hier.roots[i].stage._num];
+    var r2 = _rendered[_hier.roots[i + 1].stage._num];
+    if (r1 && r2) {
+      var x1 = r1.x + COL_W + 4;
+      var x2 = r2.x - 4;
+      var y = r1.y + 28;
+      addPath("M" + x1 + " " + y + " L" + x2 + " " + y, "#0B1D3A", "arrowH");
+    }
   }
+
+  // 2) 부모 → 자식 세로 L자 연결선 (재귀)
+  function drawChildConnectors(parentNode) {
+    var pr = _rendered[parentNode.stage._num];
+    if (!pr) return;
+    parentNode.children.forEach(function(child) {
+      var cr = _rendered[child.stage._num];
+      if (!cr) return;
+      // L자 경로: 부모 하단 왼쪽 → 아래로 → 오른쪽으로 자식
+      var startX = pr.x + 20;
+      var startY = pr.y + pr.col.offsetHeight;
+      var endX = cr.x + 4;
+      var endY = cr.y + 28;
+      var midY = endY;
+      addPath("M" + startX + " " + startY + " L" + startX + " " + midY + " L" + endX + " " + midY, "#F15A30", "arrowV");
+      drawChildConnectors(child);
+    });
+  }
+  _hier.roots.forEach(function(root) { drawChildConnectors(root); });
 
   document.getElementById("canvas").appendChild(svg);
 }
